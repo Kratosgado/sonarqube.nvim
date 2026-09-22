@@ -24,6 +24,12 @@ local default = {
         capabilities = vim.lsp.protocol.make_client_capabilities(),
         log_level = "OFF",
     },
+    connected_mode = {
+        server_url = nil,
+        project_key = nil,
+        connection_id = "default",
+        projects = nil, -- table of per-directory overrides: { ["~/myproject"] = { project_key = "..." } }
+    },
     rules = {
         enabled = true,
     },
@@ -69,7 +75,14 @@ local config = default
 function M.setup(opts)
     config = vim.tbl_deep_extend("force", default, opts or {})
     vim.api.nvim_create_user_command("SonarQubeShowConfig", function()
-        print(vim.inspect(config))
+        local display = vim.deepcopy(config)
+        -- Show connected mode with token redacted
+        local connected = require("sonarqube.connected")
+        local connected_display = connected.get_display_config()
+        if connected_display then
+            display.connected_mode_resolved = connected_display
+        end
+        print(vim.inspect(display))
     end, {})
 end
 

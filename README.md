@@ -1,11 +1,14 @@
 # sonarqube
+
 `sonarqube` integrates with the [sonarlint-language-server](https://github.com/SonarSource/sonarlint-language-server) to deliver real-time static analysis and code actions directly in neovim.
 
-https://github-production-user-asset-6210df.s3.amazonaws.com/10507366/454176376-cda18dde-6bb9-49c8-8dfa-59d29d3d8750.mp4
+<https://github-production-user-asset-6210df.s3.amazonaws.com/10507366/454176376-cda18dde-6bb9-49c8-8dfa-59d29d3d8750.mp4>
 
 <!-- TOC -->
+
 - [Installation](#installation)
 - [Configuration](#configuration)
+- [Connected Mode](#connected-mode)
 - [Rules](#rules)
 - [Key Features](#key-features)
 - [Commands](#commands)
@@ -18,6 +21,7 @@ https://github-production-user-asset-6210df.s3.amazonaws.com/10507366/454176376-
 ### 1. Install with your favourite package manager
 
 [lazy.nvim](https://github.com/folke/lazy.nvim)
+
 ```lua
 {
     "iamkarasik/sonarqube.nvim",
@@ -28,6 +32,7 @@ https://github-production-user-asset-6210df.s3.amazonaws.com/10507366/454176376-
 ```
 
 [packer.nvim](https://github.com/wbthomason/packer.nvim)
+
 ```lua
 use {
     "iamkarasik/sonarqube.nvim",
@@ -40,27 +45,33 @@ use {
 ### 2. Install the sonarlint-language-server
 
 #### Option 1: Using the plugin (Recommended)
+
 If you do not already have the sonarlint-language-server, you can run `:SonarQubeInstallLsp`
 
 #### Option 2: Using [mason.nvim](https://github.com/mason-org/mason.nvim)
+
 Run `:MasonInstall sonarlint-language-server` then navigate to the [Mason Configuration](#mason-configuration)
 
 #### Option 3: Manually install from GitHub
+
 Download/Install the extension from the [github releases](https://github.com/SonarSource/sonarlint-vscode/releases)
 
 ## Configuration
 
 ### Option 1: Default Configuration (Recommended)
+
 This is recommended when installing the LSP via `:SonarQubeInstallLsp`
+
 ```lua
 require('sonarqube').setup({})
 ```
 
 ### Option 2: Override Default Configuration
+
 ```lua
 require('sonarqube').setup({
     lsp = {
-        cmd = { 
+        cmd = {
             "/path/to/java",
             "-jar",
             "/path/to/sonarlint-ls.jar",
@@ -80,7 +91,7 @@ require('sonarqube').setup({
         log_level = "OFF",
         handlers = {
             -- Custom handler to show rule description
-            -- The `res` argument contains various keys containing html that can be rendered in your favourite neovim html plugin 
+            -- The `res` argument contains various keys containing html that can be rendered in your favourite neovim html plugin
             -- Alternatively, open the rule in the browser using your favourite sonarqube rule website (example below)
             ["sonarlint/showRuleDescription"] = function(err, res, ctx, cfg)
                 local uri = "https://rules.sonarsource.com/%s/RSPEC-%s"
@@ -97,8 +108,8 @@ require('sonarqube').setup({
         csharpOssPath = "/path/to/analyzers/sonarcsharp.jar",
         csharpEnterprisePath = "/path/to/analyzers/csharpenterprise.jar",
     },
-    go = { 
-        enabled = true 
+    go = {
+        enabled = true
     },
     html = {
         enabled = true,
@@ -110,7 +121,7 @@ require('sonarqube').setup({
     },
     java = {
         enabled = true,
-        await_jdtls = true 
+        await_jdtls = true
     },
     javascript = {
         enabled = true, -- Requires node >= 18.17.0
@@ -120,7 +131,7 @@ require('sonarqube').setup({
         enabled = true,
     },
     python = {
-        enabled = true 
+        enabled = true
     },
     text = {
         enabled = true,
@@ -132,6 +143,7 @@ require('sonarqube').setup({
 ```
 
 ## Mason Configuration
+
 ```lua
 local extension_path = vim.fn.stdpath("data")
     .. "/mason/packages/sonarlint-language-server/extension"
@@ -165,7 +177,97 @@ require("sonarqube").setup({
 })
 ```
 
+## Connected Mode
+
+Connected mode allows you to bind your local project to a SonarQube Server instance. This syncs your server's quality profiles, custom rules, and suppresses issues marked as **Won't Fix** or **False Positive** on the server.
+
+### Setup
+
+#### 1. Generate a User Token
+
+Generate a token on your SonarQube server at `https://<your-sonarqube-url>/account/security/`
+
+#### 2. Set the Environment Variable
+
+```bash
+export SONARQUBE_TOKEN="your-token-here"
+```
+
+Add this to your shell profile (`.bashrc`, `.zshrc`, etc.) to persist it.
+
+#### 3. Configure the Connection
+
+**Option A: Plugin configuration**
+
+For a single project (or a shared server URL where you always work on one project):
+
+```lua
+require("sonarqube").setup({
+    connected_mode = {
+        server_url = "https://sonarqube.mycompany.com",
+        project_key = "my-project-key",
+        -- connection_id = "default",  -- optional, defaults to "default"
+    },
+})
+```
+
+For multiple projects, use the `projects` table keyed by directory path:
+
+```lua
+require("sonarqube").setup({
+    connected_mode = {
+        server_url = "https://sonarqube.mycompany.com",  -- shared server for all projects
+        projects = {
+            ["~/projects/frontend"] = { project_key = "frontend-app" },
+            ["~/projects/backend"] = { project_key = "backend-api", server_url = "https://other-sonar.com" },
+        },
+    },
+})
+```
+
+The plugin detects the project root (using `.git`, `pom.xml`, `go.mod`, etc.) and matches it against the `projects` entries. If no match is found, it falls back to the top-level `server_url`/`project_key`.
+
+**Option B: Project file (recommended for teams)**
+
+Create a `.sonarlint/connectedMode.json` file in your project root:
+
+```json
+{
+  "projectKey": "my-project-key",
+  "serverUrl": "https://sonarqube.mycompany.com",
+  "connectionId": "default"
+}
+```
+
+This file can be committed to version control so all team members share the same binding.
+
+> **Precedence:** The project file (`.sonarlint/connectedMode.json`) takes precedence over the plugin configuration. If both are present, the project file wins for any field it specifies.
+
+### How It Works
+
+When connected mode is configured:
+
+1. The plugin passes your server connection to the sonarlint language server at startup
+2. The language server syncs quality profiles and rules from your SonarQube server
+3. Analysis uses your server's rule configuration instead of (or in addition to) local defaults
+4. Issues marked as Won't Fix or False Positive on the server are suppressed locally
+
+### Fallback Behavior
+
+If the server is unreachable (network issue, invalid token, etc.), the plugin will:
+
+- Show a warning notification
+- Continue running in standalone mode with local rules
+- Analysis still works, just without server-synced configuration
+
+### Commands
+
+- `:SonarQubeConnectedModeStatus` - Show connection state, server URL, project key, and connection ID
+- `:SonarQubeCheckConnection` - Test the connection to your SonarQube server
+- `:SonarQubeUpdateBinding` - Force re-sync the project binding with the server
+
 ## Rules
+
 Rules can be individually enabled or disabled, as well as optionally receive override parameters where applicable.
 Note that setting `rules.enabled = false` will disable all analysis.
 
@@ -187,6 +289,7 @@ require('sonarqube').setup({
 ```
 
 ## Key Features
+
 - [x] C# support
 - [x] Go support
 - [x] HTML support
@@ -197,18 +300,26 @@ require('sonarqube').setup({
 - [x] Python support
 - [x] Text support
 - [x] XML support
+- [x] Connected Mode (sync with SonarQube Server)
 - [x] Commands to download sonarlint server/analyzers (requires [NeoVim](https://neovim.io/) >= 0.10)
 - [x] Configurable handler for sonarlint/showRuleDescription
 - [x] Rules: Disable All, Toggle Rule (Code Action), configure in setup
 
 ## Commands
+
 - `SonarQubeInstallLsp` - Install the LSP
 - `SonarQubeShowConfig` - Print the configuration
 - `SonarQubeListAllRules` - List all the registered rules
+- `SonarQubeConnectedModeStatus` - Show connected mode status
+- `SonarQubeCheckConnection` - Test the connection to your SonarQube server
+- `SonarQubeUpdateBinding` - Force re-sync the project binding with the server
 
 ## TODO
+
 - [ ] Support C/C++
 - [ ] Show all locations for issue
+- [ ] SonarCloud connected mode support
 
 ## Special Thanks
+
 - [@schrieveslaach](https://github.com/schrieveslaach/) - [sonarlint.nvim](https://gitlab.com/schrieveslaach/sonarlint.nvim) was used as inspiration

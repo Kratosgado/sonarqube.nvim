@@ -127,4 +127,103 @@ M.setup = function(opts)
     end
 end
 
+--- Configure connected mode handlers and init_options.
+--- Call this BEFORE the LSP client starts.
+--- @param connected_config table { server_url, project_key, connection_id, token }
+M.configure_connected_mode = function(connected_config)
+    -- Add connection info to initializationOptions
+    M.init_options.connections = {
+        sonarqube = {
+            {
+                serverUrl = connected_config.server_url,
+                connectionId = connected_config.connection_id,
+                token = connected_config.token,
+            },
+        },
+        sonarcloud = {},
+    }
+
+    -- Handler: LS requests a token for a given server URL
+    M.register_handler("sonarlint/getTokenForServer", function(_, _, _, _)
+        return connected_config.token
+    end)
+
+    -- Handler: LS asks client to assist creating a connection
+    M.register_handler("sonarlint/assistCreatingConnection", function(_, _, _, _)
+        return {
+            newConnectionId = connected_config.connection_id,
+        }
+    end)
+
+    -- Handler: LS asks client to assist binding a project
+    M.register_handler("sonarlint/assistBinding", function(_, _, _, _)
+        local root = vim.fn.getcwd()
+        return {
+            configurationScopeId = vim.uri_from_fname(root),
+        }
+    end)
+
+    -- Handler: LS reports connection check result (success/failure)
+    M.register_handler("sonarlint/reportConnectionCheckResult", function(_, params, _, _)
+        local connected = require("sonarqube.connected")
+        if params.success then
+            connected.state = "connected"
+            vim.notify("SonarQube: Connected to server successfully", vim.log.levels.INFO)
+        else
+            connected.state = "disconnected"
+            local reason = params.reason or "Unknown error"
+            vim.notify(
+                "SonarQube: Failed to connect to server - " .. reason
+                    .. ". Falling back to standalone mode.",
+                vim.log.levels.WARN
+            )
+        end
+    end)
+
+    -- Handler: LS warns about soon-unsupported server version
+    M.register_handler("sonarlint/showSoonUnsupportedVersionMessage", function(_, params, _, _)
+        if params and params.text then
+            vim.notify("SonarQube: " .. params.text, vim.log.levels.WARN)
+        end
+    end)
+
+    -- Merge connected mode binding and connection details into settings
+    M.settings = vim.tbl_deep_extend("force", M.settings, {
+        sonarlint = {
+            connectedMode = {
+                connections = {
+                    sonarqube = {
+                        {
+                            serverUrl = connected_config.server_url,
+                            connectionId = connected_config.connection_id,
+                            token = connected_config.token,
+                        },
+                    },
+                },
+                project = {
+                    connectionId = connected_config.connection_id,
+                    projectKey = connected_config.project_key,
+                },
+            },
+        },
+    })
+end
+
+--- Send the connected mode binding notification to the running LSP client.
+--- Call this AFTER the LSP client has started.
+M.notify_binding = function()
+    local client = vim.lsp.get_clients({ name = "sonarqube" })[1]
+    if not client then
+        return
+    end
+
+    -- Send updated settings including the connected mode binding
+    client.notify("workspace/didChangeConfiguration", {
+        settings = M.settings,
+    })
+
+    -- Notify the LS that bindings have been manually configured
+    client.notify("sonarlint/addedManualBindings")
+end
+
 return M
